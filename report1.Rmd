@@ -1,3 +1,19 @@
+---
+title: 'Google data report #1'
+author: "Ido Klein"
+date: "16/11/2021"
+output:
+  html_document: 
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	paged.print=TRUE
+)
 library(sf)
 library(fs)
 library(tidyverse)
@@ -8,6 +24,10 @@ library(skimr)
 library(lubridate)
 options(scipen = 10)
 Sys.setlocale(locale = "hebrew")
+```
+
+## google data report
+```{r}
 paths <- fs::dir_info("D:/OneDrive_2021_11_10/Google_data_2015_2020/Original_data/access_files2/") %>% 
   pull(path) %>% 
   as.character() 
@@ -47,68 +67,71 @@ googletimes$from_epoch <- as.numeric(googletimes$timestamp)
 # change relevant columns
 googletimes$project <-  as.factor(googletimes$project)
 googletimes$dbname <-  as.factor(googletimes$dbname)
+# gc()
+
+```
+I have recieved 30 access database files in the size of ~14 gb.  
+one of the files (backup of uptodateprojects,~2gb) was corrupted and could not be processed.  Jordan Katz will resend it. 
+the first assignment was converting the actual google data (stord in each db under the "googletimes" table) to one file. the unification of all files created a ~61 million rows file.  
+data structure:
+```{r echo=TRUE,include = TRUE}
 head(googletimes)
-gc()
-# which project has most calls? 232 projects
-largest_proj <- googletimes %>% 
-  count(project) %>% 
-  arrange(-n)
-# beinironi is the largest. 9 projects with more than a million records, na for almost 4 million records
-largest_proj %>% 
-  filter(n>1000000) %>% 
-  mutate(project = fct_inorder(as.character(project))) %>% 
-  ggplot(aes(x= project,y= n)) + 
-  geom_col() + 
-  theme(axis.text.x = element_text(angle = 90))
-# largest projects distribution over time.
-# we have a huge hole between april 2018 to may 2019. this might have to do with the corrupted file
-googletimes %>% 
-  filter(project %in% largest_proj$project[1:10]) %>% 
-  count(project,date) %>% 
-  ggplot(aes(x=date,y=n)) + 
-  geom_col() + 
-  facet_grid(project~.)
-# unique identifiers: 
-# ID is not unique. in each access file, there was a different counter. some of the dbs are suplicated
+```
+number of rows:
+```{r echo=TRUE,include = TRUE}
+nrow(googletimes)
+```
+When trying to find a unique identifier for each row, I found that the ID column is useless
+```{r echo=TRUE,include = TRUE}
 googletimes %>% 
   filter(project == "beinironi",ID == 1)
-# there are a lot of beinironi project rows in different dbs
+```
+and that some of the projects are spread around multiple dbs
+```{r echo=TRUE,include = TRUE}
 googletimes %>% 
   filter(project == "beinironi") %>% 
   count(dbname) %>% 
   arrange(-n)
-# trying to get distinct values by everything else that id and dbname - got 44 milion. meaning - at least 17 million are duplicated. 
-gc()
+```
+therefore I made each row distinct by using all of its values, besides the dbname and id
+```{r echo=TRUE, include = TRUE}
 distincts <- googletimes %>% 
   select(-ID,-dbname) %>%
   distinct()
-# reevalute which project has most calls - only 6 named projects with over a million, 3 million querys have no project.
+```
+I now evalute the number of projects and the number of rows in each of them. there are 232 projects, the largest 10 take ~75% of all rows. ~6% have no identifier. 
+```{r echo=TRUE,include = TRUE,paged.print = TRUE}
 largest_proj2 <- distincts %>% 
   count(project) %>% 
   arrange(-n)
-largest_proj2%>% 
-  filter(n>1000000) %>% 
-  mutate(project = fct_inorder(as.character(project))) %>% 
-  ggplot(aes(x= project,y= n)) + 
-  geom_col() + 
-  theme(axis.text.x = element_text(angle = 90))
-# 10 largest projects - what's going on? looks like we dodged the duplicated values problem. 
+largest_proj2
+```
+time coverage of 10 largest projects is missing april 2018 to may 2019. this data exists, I have saved some of it about two years ago - mainly the beinironi, however it does not appear in matat files
+```{r echo=TRUE,include = TRUE}
 distincts %>% 
-  filter(project %in% largest_proj$project[1:10]) %>% 
+  filter(project %in% largest_proj2$project[1:10]) %>% 
   count(project,date) %>% 
+  arrange(-n) %>% 
   ggplot(aes(x=date,y=n)) + 
   geom_col() + 
-  facet_grid(project~.)
-# end result of this stage - got the data to to be not duplicated. problem - huge missing period. 
-
-# table status - what's going on in other tables?
-
+  facet_grid(project~.) + 
+  theme(strip.text.y = element_text(angle = 0),
+        axis.text.x = element_text(angle = 90)) + 
+  scale_x_date(date_breaks = "1 month")
+```
+  
+regarding other tables - very big mess. some of the dbs have certain tables, other dont. the kind we are interested in is the meta data for the project and maslulid
+```{r echo=TRUE,include = TRUE,paged.print = TRUE}
 table_status <- map(cons,~sqlTables(.x, tableType = "TABLE")) %>% 
   bind_rows() %>% 
   left_join(df_db, by = c("TABLE_CAT" = "path")) %>% 
   select(dbname,TABLE_NAME) %>% 
   mutate(num = 1) %>% 
   spread(TABLE_NAME,num)
+table_status
+```
+when calculating this, I have only 110 unique projects, as opposed to 232 existing in the google times table. that means that for more than a hundred project, a simple join of each maslul can not be carried out. the number of maslulim per project is presented in this table.
+```{r}
 # get all calemders, see whether there are problems
 calendar <- map(cons,~sqlQuery(.x, "select * from calendar"))
 has_calendar <- map(calendar,~class(.x) =="data.frame") %>% unlist()
@@ -171,7 +194,7 @@ trips_all <- map(cons,~sqlQuery(.x, "select * from trips_all"))
 has_trips_all <- map(trips_all,~class(.x) =="data.frame") %>% unlist()
 trips_all_table1 <- map2(trips_all[has_trips_all],df_db$dbname[has_trips_all],function(x,y){x %>% mutate(dbname = y)})
 
-map(trips_all_table1,~.x$מסלול %>% class())
+# map(trips_all_table1,~.x$מסלול %>% class())
 trips_all_table1[[26]]$מסלול <- as.character(trips_all_table1[[26]]$מסלול)
 trips_all_table <- trips_all_table1[trips_all_table1 %>% map(~nrow(.x)!=0) %>% as.logical()] %>%
   bind_rows()
@@ -191,15 +214,33 @@ dis_trips1 <- trips1_table %>%
   select(-dbname) %>% 
   distinct()
 # have only 110 projects, out of 232 with data. concerning
-bind_rows(dis_trips_not_matrices,dis_newroutes,dis_trips_all,dis_trips1) %>% 
+
+meta_data_proj <- bind_rows(dis_trips_not_matrices,dis_newroutes,dis_trips_all,dis_trips1) %>% 
   select_if(not_all_na) %>% 
   select(`פרוייקט`,maslulid) %>% 
   distinct() %>% 
-  count(`פרוייקט`)
+  count(`פרוייקט`) %>% 
+  arrange(-n)
+meta_data_proj
+```
+projects that can be joined:
+```{r echo=TRUE,include = TRUE,paged.print = TRUE}
+largest_proj2 %>% 
+  filter(project %in% meta_data_proj$פרוייקט)
+```
 
+projects that can't be joined:
+```{r echo=TRUE,include = TRUE,paged.print = TRUE}
+largest_proj2 %>% 
+  filter(!project %in% meta_data_proj$פרוייקט)
+```
 
-
-odbcCloseAll()
-# rm(cons)
-
-
+next assignments:  
+1. find missing metadata regarding maslulim  
+2. talk to matat regarding missing year  
+3. create geometric features for each maslul  
+4. store all relevant data in a gpkg (geographic local database serving as one package)  
+5. document the tables and rows  
+6. perform data quality assurance (if I remember correctly, there might be a 2 hour lag)  
+7. prepare for distribution  
+8. talk to lishcah mishpatit regarding distribution  
