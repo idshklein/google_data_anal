@@ -14,6 +14,10 @@ paths <- fs::dir_info("D:/OneDrive_2021_11_10/Google_data_2015_2020/Original_dat
 dbnames <- paths %>% str_split("/") %>% map_chr(~.x[[length(.x)]]) %>% str_sub(end = -7) 
 df_db = data.frame(dbname = dbnames, path = paths) %>% 
   filter(!str_detect(dbname,"\\."))
+# df_db %>% 
+  # left_join(fs::dir_info("D:/OneDrive_2021_11_10/Google_data_2015_2020/Original_data/access_files2/"), by = "path") %>% 
+  # select(dbname,size) %>% 
+  # write_csv("jordan.csv")
 cons <- map(df_db$path,~odbcDriverConnect(paste0("Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=",.x)))
 
 # creation of googletimes files - ran only once, computer has only 16 giga ram
@@ -196,10 +200,36 @@ bind_rows(dis_trips_not_matrices,dis_newroutes,dis_trips_all,dis_trips1) %>%
   select(`פרוייקט`,maslulid) %>% 
   distinct() %>% 
   count(`פרוייקט`)
+meta_data_proj <- bind_rows(dis_trips_not_matrices,dis_newroutes,dis_trips_all,dis_trips1) %>% 
+  select_if(not_all_na) %>% 
+  select(`פרוייקט`,maslulid) %>% 
+  distinct() %>% 
+  count(`פרוייקט`) %>% 
+  arrange(-n)
 
-
-
+meta_data_proj
+largest_proj2 %>% 
+  filter(project %in% meta_data_proj$פרוייקט)
 odbcCloseAll()
 # rm(cons)
 
+cnts1 <- trips_table %>% 
+  filter(is.na(project)) %>% 
+  select_if(not_all_na) %>% 
+  select(project = `פרוייקט`,maslulid,dbname) %>% 
+  distinct()
+cnts <- googletimes %>% 
+  distinct(project,maslulid,dbname) 
 
+cnts %>% 
+  mutate(n = 1) %>% 
+  left_join(cnts1 %>% mutate(n=2),by = c("project","maslulid","dbname")) %>% 
+  filter(project != "beinironi",
+         is.na(n.y),
+         dbname != "allnew_lines",
+         dbname != "allnew_lines_Backup",
+         dbname != "allprojects",
+         dbname != "allprojects_Backup",
+         dbname != "allprojects1",
+         dbname != "allprojects1_Backup",
+         dbname != "all_lines_OD_Backup",)
