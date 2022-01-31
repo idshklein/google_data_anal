@@ -72,9 +72,13 @@ shp %>% select(segmentid = LINKID,
                length = LENGTH, 
                origin = `מוצא`,
                destination = `יעד`) %>% 
-  separate(origin,into = c("origin_x","origin_y"),sep = ",") %>% 
-  separate(destination,into = c("destination_x","destination_y"),sep = ",") %>% 
-  mutate(segmentid = ifelse(segmentid > 200, segmentid - 200,segmentid)) %>% 
+  separate(origin,into = c("origin_y","origin_x"),sep = ",") %>% 
+  separate(destination,into = c("destination_y","destination_x"),sep = ",") %>% 
+  mutate(segmentid = ifelse(segmentid > 200, segmentid - 200,segmentid),
+         origin_x = as.numeric(origin_x),
+         origin_y = as.numeric(origin_y),
+         destination_x = as.numeric(destination_x),
+         destination_y = as.numeric(destination_y)) %>% 
   st_write("segments.shp",delete_dsn =T,layer_options = "ENCODING=UTF-8")
 segments <- st_read("segments.shp")
 
