@@ -54,21 +54,24 @@ beinironi %>%
   geom_histogram()
 
 # create segments.shp
-direction_1 <- st_read("D:/OneDrive_2021_11_10/Google_data_2015_2020/Original_data/gis files/shp/בין_עירוני-_כיוון_1.shp")
-direction_2 <- st_read("D:/OneDrive_2021_11_10/Google_data_2015_2020/Original_data/gis files/shp/בין_עירוני-_כיוון_2.shp")
+direction_1 <- st_read("C:/idos_shit/google_data_anal/shp/dir1.shp")
+# direction_2 <- st_read("C:/idos_shit/google_data_anal/shp/dir2.shp")
 # shp <- bind_rows(direction_1,direction_2) %>% arrange(LINKID)
-path <- "D:/OneDrive_2021_11_10/Google_data_2015_2020/Original_data/jumbomail/allprojects11.accdb"
-con <- odbcDriverConnect(paste0("Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=",path),DBMSencoding = "windows-1255")
+path <- "C:/Users/yehuda/Downloads/New folder/allprojects11.accdb"
+con <- odbcDriverConnect(paste0("Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=",path),DBMSencoding = "Windows-1255")
 trips_all <- sqlQuery(con, "select * from trips_all")
 meta <- trips_all %>% 
   filter(`פרוייקט` == "beinironi")
 
-shp <- bind_rows(direction_1,direction_2) %>% arrange(LINKID) %>% 
+shp <- direction_1 %>% arrange(LINKID) %>% 
   left_join(meta,by = c("LINKID" = "maslulid" ))
 st_bbox(shp)
+
+
+marcos_manual_labor <- st_read("C:/idos_shit/google_data_anal/segments_cl/segments.shp",crs = 4326, options = "ENCODING=WINDOWS-1255") %>% 
+  st_drop_geometry() %>% 
+  select(SEGMNTD,FROM,TO,ROAD)
 shp %>% select(segmentid = LINKID, 
-               direction = DIR, 
-               description = `מסלול`, 
                length = LENGTH, 
                origin = `מוצא`,
                destination = `יעד`) %>% 
@@ -79,6 +82,10 @@ shp %>% select(segmentid = LINKID,
          origin_y = as.numeric(origin_y),
          destination_x = as.numeric(destination_x),
          destination_y = as.numeric(destination_y)) %>% 
+  left_join(marcos_manual_labor,by = c("segmentid" = "SEGMNTD")) %>% 
+  select(segmntd = segmentid,length,orign = FROM,dstntn = TO, road = ROAD,
+         orign_x = origin_x,orign_y = origin_y,dstntn_x =destination_x,
+         dstntn_y =destination_y) %>% 
   st_write("segments.shp",delete_dsn =T,layer_options = "ENCODING=UTF-8")
 segments <- st_read("segments.shp")
 
@@ -105,15 +112,15 @@ segments <- st_read("segments.shp")
 
 check1 <- beinironi %>% 
   select(-sugyom,-project) %>% 
-  rename(masluld=maslulid) %>% 
-  mutate(directn = ifelse(masluld > 200,2,1),
-         masluld = ifelse(masluld > 200,masluld-200,masluld)) %>% 
-  group_by(masluld,directn, length) %>% 
+  rename(segmntd=maslulid) %>%
+  mutate(directn = ifelse(segmntd > 200,2,1),
+         segmntd = ifelse(segmntd > 200,segmntd-200,segmntd)) %>% 
+  group_by(segmntd,directn, length) %>% 
   count() %>% 
   ungroup() %>% 
-  group_by(masluld,directn) %>% 
+  group_by(segmntd,directn) %>% 
   add_count() %>% 
-  left_join(segments %>% st_drop_geometry() %>% select(masluld,directn,orig_length =length,dscrptn),by = c("masluld","directn")) 
+  left_join(segments %>% st_drop_geometry() %>% select(segmntd,directn,orig_length =length,dscrptn),by = c("segmntd","directn")) 
 cluses <- check1 %>% 
   # filter(masluld==1,directn==1) %>%
   # pull(length) %>%
@@ -131,39 +138,44 @@ cluses <- check1 %>%
   # view()
 plots1 <- beinironi %>% 
   select(-sugyom,-project) %>% 
-  rename(masluld=maslulid) %>% 
-  mutate(directn = ifelse(masluld > 200,2,1),
-         masluld = ifelse(masluld > 200,masluld-200,masluld)) %>% 
-  left_join(cluses, by = c("masluld","directn","length")) %>% 
+  rename(segmntd=maslulid) %>% 
+  mutate(directn = ifelse(segmntd > 200,2,1),
+         segmntd = ifelse(segmntd > 200,segmntd-200,segmntd)) %>% 
+  left_join(cluses, by = c("segmntd","directn","length")) %>% 
   mutate(dailytime = as_hms(timestamp),
          recluster = as.factor(recluster)) %>% 
-  select(masluld,directn,dscrptn, length,timestamp,dailytime,recluster) %>% 
-  group_by(masluld,directn,dscrptn) %>% 
+  select(segmntd,directn,dscrptn, length,timestamp,dailytime,recluster,orig_length) %>% 
+  group_by(segmntd,directn,dscrptn) %>% 
   nest() %>% 
   mutate(directn = paste0("d",directn)) %>% 
-  pivot_wider(id_cols = masluld,names_from = directn, values_from = c(dscrptn,data)) %>% 
+  pivot_wider(id_cols = segmntd,names_from = directn, values_from = c(dscrptn,data)) %>% 
   mutate(plot = pmap(list(dscrptn_d1,dscrptn_d2,data_d1,data_d2), function(x,y,z,w){
     p1 <- ggplot(z,aes(x = dailytime,y = length,color = recluster)) + 
       geom_point() + 
+      geom_hline(mapping = aes(yintercept = orig_length)) +
       ggtitle(paste0(x,"1"))
     p2 <- ggplot(w,aes(x = dailytime,y = length,color = recluster)) + 
       geom_point() + 
+      geom_hline(mapping = aes(yintercept = orig_length)) +
       ggtitle(paste0(y,"2"))
     p3 <- ggplot(z,aes(x = timestamp,y = length,color = recluster)) + 
       geom_point() + 
+      geom_hline(mapping = aes(yintercept = orig_length)) +
       ggtitle(paste0(x,"1"))
     p4 <- ggplot(w,aes(x = timestamp,y = length,color = recluster)) + 
       geom_point() + 
+      geom_hline(mapping = aes(yintercept = orig_length)) +
       ggtitle(paste0(y,"2"))
     (p1 + p2) / (p3 + p4)
   }))
-plots1$plot[[135]]
+plots1$plot[[1]]
+map2(plots1$plot,plots1$segmntd,~ggsave(filename = paste0(.y,".png"),plot = .x,width = 20,height = 10))
 popupOptions = popupOptions(maxWidth = 1000)
 cluses %>% 
   summarise(metr = max(perc)) %>% 
-  left_join(segments, by = c("masluld","directn")) %>% 
+  left_join(segments, by = c("segmntd","directn")) %>% 
   st_sf() %>% 
-  select(masluld,directn,metr) %>% 
+  select(segmntd,directn,metr) %>% 
   filter(directn == 2) %>% 
   # mapview(zcol = "metr",popup = popupGraph(plots1$plot))
   mapview(zcol = "metr",popup = paste0('<style> div.leaflet-popup-content {width:auto !important;}</style>',
