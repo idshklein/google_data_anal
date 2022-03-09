@@ -42,11 +42,12 @@ Sys.setlocale(locale = "hebrew")
 # write_csv(beinironi,"beinironi.csv")
 # rm(googletimes)
 beinironi <- read_csv("beinironi.csv")
-beinironi %>% 
+beinironi1 <- beinironi %>% 
   mutate(segmentid = ifelse(maslulid > 200, maslulid - 200,maslulid),
-         direction = ifelse(maslulid > 200, 1,2)) %>% 
-  select(segmentid,direction,timestamp,time,length) %>% 
-  write_csv("travel_times.csv")
+         direction = ifelse(maslulid > 200, 2,1),
+         timestamp = lubridate::as_datetime(timestamp,tz = "Israel")) %>% 
+  select(segmentid,direction,timestamp,time,length) 
+beinironi1 %>% write.csv("travel_times.csv", row.names=FALSE)
 
 beinironi %>% 
   arrange(timestamp) %>% 
@@ -68,9 +69,8 @@ shp <- direction_1 %>% arrange(LINKID) %>%
 st_bbox(shp)
 
 
-marcos_manual_labor <- st_read("C:/idos_shit/google_data_anal/segments_cl/segments.shp",crs = 4326, options = "ENCODING=WINDOWS-1255") %>% 
-  st_drop_geometry() %>% 
-  select(SEGMNTD,FROM,TO,ROAD)
+marcos_manual_labor <- read_csv("C:/idos_shit/google_data_anal/segments_cl/marcos_manual.csv",locale = locale(encoding = "windows-1255")) 
+
 shp %>% select(segmentid = LINKID, 
                length = LENGTH, 
                origin = `מוצא`,
@@ -81,9 +81,11 @@ shp %>% select(segmentid = LINKID,
          origin_x = as.numeric(origin_x),
          origin_y = as.numeric(origin_y),
          destination_x = as.numeric(destination_x),
-         destination_y = as.numeric(destination_y)) %>% 
-  left_join(marcos_manual_labor,by = c("segmentid" = "SEGMNTD")) %>% 
-  select(segmntd = segmentid,length,orign = FROM,dstntn = TO, road = ROAD,
+         destination_y = as.numeric(destination_y)) %>%
+  left_join(marcos_manual_labor,by = c("segmentid" = "SEGMNTD")) %>%
+  mutate(segmentid = as.integer(segmentid),
+         ROAD = as.integer(ROAD)) %>%
+  select(segmntd = segmentid, road = ROAD,length,dscrptn = DSCRPTN,orign = FROM,dstntn = TO,
          orign_x = origin_x,orign_y = origin_y,dstntn_x =destination_x,
          dstntn_y =destination_y) %>% 
   st_write("segments.shp",delete_dsn =T,layer_options = "ENCODING=UTF-8")
